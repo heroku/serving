@@ -115,7 +115,9 @@ func makePodSpec(rev *v1alpha1.Revision, loggingConfig *logging.Config, tracingC
 		return nil, fmt.Errorf("failed to create queue-proxy container: %w", err)
 	}
 
-	userContainer := rev.Spec.GetContainer().DeepCopy()
+	containers := []corev1.Container{}
+
+	userContainer := rev.Spec.Containers[0].DeepCopy()
 	// Adding or removing an overwritten corev1.Container field here? Don't forget to
 	// update the fieldmasks / validations in pkg/apis/serving
 
@@ -152,11 +154,17 @@ func makePodSpec(rev *v1alpha1.Revision, loggingConfig *logging.Config, tracingC
 	// If the client provides probes, we should fill in the port for them.
 	rewriteUserProbe(userContainer.LivenessProbe, userPortInt)
 
+	containers = append(containers, *userContainer)
+
+	if len(rev.Spec.Containers) > 1 {
+		otherContainer := rev.Spec.Containers[1].DeepCopy()
+		containers = append(containers, *otherContainer)
+	}
+
+	containers = append(containers, *queueContainer)
+
 	podSpec := &corev1.PodSpec{
-		Containers: []corev1.Container{
-			*userContainer,
-			*queueContainer,
-		},
+		Containers:                    containers,
 		Volumes:                       append([]corev1.Volume{varLogVolume}, rev.Spec.Volumes...),
 		ServiceAccountName:            rev.Spec.ServiceAccountName,
 		TerminationGracePeriodSeconds: rev.Spec.TimeoutSeconds,
